@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: openpulse-postgres
+    environment:
+      POSTGRES_USER: openpulse
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-openpulse}
+      POSTGRES_DB: openpulse
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openpulse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: openpulse-dashboard
+    environment:
+      DATABASE_URL: postgresql://openpulse:${POSTGRES_PASSWORD:-openpulse}@postgres:5432/openpulse?schema=public
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-change-me-in-production}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ./packages/db/prisma:/app/packages/db/prisma
+
+  collector:
+    build:
+      context: .
+      dockerfile: Dockerfile.collector
+    container_name: openpulse-collector
+    environment:
+      DATABASE_URL: postgresql://openpulse:${POSTGRES_PASSWORD:-openpulse}@postgres:5432/openpulse?schema=public
+      COLLECTOR_URL: ${COLLECTOR_URL:-http://localhost:3001}
+      NODE_ENV: production
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+

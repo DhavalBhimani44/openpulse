@@ -1,0 +1,31 @@
+FROM node:18-alpine AS base
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+FROM base AS deps
+WORKDIR /app
+COPY package.json pnpm-lock.yaml* ./
+COPY apps/dashboard/package.json ./apps/dashboard/
+COPY packages/db/package.json ./packages/db/
+COPY packages/trpc/package.json ./packages/trpc/
+COPY packages/ui/package.json ./packages/ui/
+RUN pnpm install --frozen-lockfile
+
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN pnpm build --filter=@openpulse/dashboard
+
+FROM base AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=builder /app/apps/dashboard/.next ./apps/dashboard/.next
+COPY --from=builder /app/apps/dashboard/package.json ./apps/dashboard/
+COPY --from=builder /app/apps/dashboard/public ./apps/dashboard/public
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages ./packages
+WORKDIR /app/apps/dashboard
+EXPOSE 3000
+ENV PORT=3000
+CMD ["pnpm", "start"]
+

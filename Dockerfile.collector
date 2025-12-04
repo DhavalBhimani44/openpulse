@@ -1,0 +1,29 @@
+FROM node:18-alpine AS base
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+FROM base AS deps
+WORKDIR /app
+COPY package.json pnpm-lock.yaml* ./
+COPY apps/collector/package.json ./apps/collector/
+COPY packages/db/package.json ./packages/db/
+RUN pnpm install --frozen-lockfile
+
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN pnpm build --filter=@openpulse/collector
+
+FROM base AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=builder /app/apps/collector/.next ./apps/collector/.next
+COPY --from=builder /app/apps/collector/package.json ./apps/collector/
+COPY --from=builder /app/apps/collector/public ./apps/collector/public
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages ./packages
+WORKDIR /app/apps/collector
+EXPOSE 3001
+ENV PORT=3001
+CMD ["pnpm", "start"]
+
